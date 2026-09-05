@@ -1,0 +1,9 @@
+# Weights
+*.pt
+*.pth
+
+# cache
+__pycache__/
+
+# Other
+.vscode
