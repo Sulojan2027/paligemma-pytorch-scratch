@@ -1,6 +1,7 @@
 from typing import Optional, Tuple
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class SiglipVisionConfig:
@@ -69,7 +70,7 @@ class SiglipVisionEmbeddings(nn.Module):
             persistent=False,
         )
         
-    def forward(self, image_batch: torch.FloatTensor) -> torch.tensor:
+    def forward(self, image_batch: torch.FloatTensor) -> torch.Tensor:
         # [B, C, H, W]
         _, _, height, width = image_batch.shape
         
@@ -83,7 +84,43 @@ class SiglipVisionEmbeddings(nn.Module):
         final_embeddings = embeddings + self.position_embedding(self.positional_ids)
         
         return final_embeddings
-
+    
+class SiglipMLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.fc1 = nn.Linear(config.hidden_size, config.linear_size)
+        self.fc2 = nn.Linear(config.linear_size, config.hidden_size)
+        
+    def forward(self, embeds: torch.Tensor) -> torch.Tensor:
+        fc1_embeds = self.fc1(embeds)
+        fc1_embeds = F.gelu(fc1_embeds, approximate="tanh")
+        fc2_embeds = self.fc2(fc1_embeds)
+        return fc2_embeds
+    
+class SiglipVisionEncoder(nn.Module):
+    def __init__(self, config: SiglipVisionConfig):
+        super().__init__()
+        self.config = config
+        self.embed_dim = config.hidden_size
+        self.self_attn = SiglipAttention(config)
+        self.layer_norm1 = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_eps)
+        self.layer_norm2 = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_eps)
+        self.mlp = SiglipMLP(config)
+    
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        
+        residual = hidden_states
+        norm1_embeds = self.layer_norm1(hidden_states)
+        attn_embeds = self.self_attn(norm1_embeds)
+        
+        residual_embeds = attn_embeds + residual
+        norm2_embeds = self.layer_norm2(residual_embeds)
+        mlp_embeds = self.mlp(norm2_embeds)
+        context_embeds = mlp_embeds + residual_embeds
+        
+        return context_embeds
+        
 class SiglipVisionTransformer(nn.Module):
     def __init__(self, config: SiglipVisionConfig):
         super().__init__()
@@ -93,7 +130,7 @@ class SiglipVisionTransformer(nn.Module):
         # Image -> Embeddings
         self.embeddings = SiglipVisionEmbeddings(config)
         # Embeddings -> Encoder
-        self.encoder = SiglipEncoder(config)
+        self.encoder = SiglipVisionEncoder(config)
         # Post Normalization
         self.post_layer_norm = nn.LayerNorm(embed_dim, eps=config.layer_norm_eps)
 
