@@ -98,6 +98,23 @@ class SiglipMLP(nn.Module):
         fc2_embeds = self.fc2(fc1_embeds)
         return fc2_embeds
     
+class SiglipAttention(nn.Module):
+    def __init__(self, config: SiglipVisionConfig):
+        super().__init__()
+        self.config = config
+        self.embed_dim = config.hidden_size
+        self.num_heads = config.num_attention_heads
+        self.head_dim = self.embed_dim // self.num_heads
+        self.scale = self.head_dim ** -0.5
+        self.dropout = config.attention_dropout
+        
+        self.q_proj = nn.Linear(self.embed_dim, self.embed_dim)
+        self.k_proj = nn.Linear(self.embed_dim, self.embed_dim)
+        self.v_proj = nn.Linear(self.embed_dim, self.embed_dim)
+        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim)
+        
+    
+    
 class SiglipVisionEncoder(nn.Module):
     def __init__(self, config: SiglipVisionConfig):
         super().__init__()
