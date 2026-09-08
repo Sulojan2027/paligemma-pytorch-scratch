@@ -113,9 +113,53 @@ class SiglipAttention(nn.Module):
         self.v_proj = nn.Linear(self.embed_dim, self.embed_dim)
         self.out_proj = nn.Linear(self.embed_dim, self.embed_dim)
         
+    def forward(
+        self,
+        embeddings: torch.Tensor
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        batch, seq_len, _ = embeddings.size()
+        
+        # [B, N_p, dim]
+        query = self.q_proj(embeddings)
+        key = self.k_proj(embeddings)
+        value = self.v_proj(embeddings)
+        
+        # Split into attention heads -> [B, N_h, N_p, head_dim]
+        query = query.view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        key = key.view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        value = value.view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        
+        # [B, N_h, N_p, N_p]
+        attn_score = torch.matmul(query, key.transpose(2,3)) * self.scale
+        
+        if attn_score.size() != (batch, self.num_heads, seq_len, seq_len):
+            raise ValueError(
+                f"Attention score should be of size {(batch, self.num_heads, seq_len, seq_len)},"
+                f"But it is {attn_score.size()}"
+            )
+        attn_score = F.softmax(attn_score, dim=-1, dtype=torch.float32).to(query.type)
+        attn_score = F.dropout(attn_score, p=self.dropout, training=self.training)
+        
+        # [B, N_h, N_p, head_dim]
+        attention = torch.matmul(attn_score, value)
+        if attention.size() != (batch, self.num_heads, seq_len, self.head_dim):
+            raise ValueError(
+                f"Attention should be of size {(batch, self.num_heads, seq_len, self.head_dim)},"
+                f"But it is {attention.size()}"
+            )
+        
+        # [B, N_p, N_h, head_dim]
+        attention_out = attention.transpose(1,2).contiguous()
+        
+        # [B, N_p, dim]
+        attention_out = attention_out.reshape(batch, seq_len, self.embed_dim)
+        
+        # [B, N_p, dim]
+        attention_out = self.out_proj(attention_out)
+        
+        return attention_out, attn_score
     
-    
-class SiglipVisionEncoder(nn.Module):
+class SiglipVisionEncoderLayer(nn.Module):
     def __init__(self, config: SiglipVisionConfig):
         super().__init__()
         self.config = config
@@ -137,6 +181,23 @@ class SiglipVisionEncoder(nn.Module):
         context_embeds = mlp_embeds + residual_embeds
         
         return context_embeds
+    
+class SiglipVisionEncoder(nn.Module):
+    def __init__(self, config: SiglipVisionConfig):
+        super().__init__()
+        self.config = config
+        self.layers = nn.ModuleList([
+            SiglipVisionEncoderLayer(config) for _ in range(config.num_hidden_layers)
+        ])
+        
+    def forward(self, input_embds: torch.Tensor) -> torch.Tensor:
+        # [B, N_p, dim]
+        embeds = input_embds
+        
+        for encoder_layer in self.layers:
+            embeds = encoder_layer(embeds)
+            
+        return embeds
         
 class SiglipVisionTransformer(nn.Module):
     def __init__(self, config: SiglipVisionConfig):
