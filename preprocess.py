@@ -6,46 +6,6 @@ import torch
 IMAGENET_STANDARD_MEAN = [0.5, 0.5, 0.5]
 IMAGENET_STANDARD_STD = [0.5, 0.5, 0.5]
 
-def resize_image(
-    image: Image,
-    size: Tuple[int, int],
-    resampling: Image.Resampling= None,
-    reduce_gap: Optional[int] = None
-) -> np.ndarray:
-    
-    height, width = size
-    resized_image = image.resize(
-        (width, height),
-        resample = resampling,
-        reducing_gap = reduce_gap
-    )
-    
-    return resized_image
-
-def rescale_image(
-    image: np.ndarray,
-    scale: float,
-    dtype: np.dtype = np.float32,
-) -> np.ndarray:
-    
-    rescaled_image = image * scale,
-    rescaled_image = rescaled_image.astype(dtype)
-    
-    return rescaled_image
-
-def normalize_image(
-    image: np.ndarray,
-    mean: Union[float, Iterable[float]],
-    std: Union[float, Iterable[float]]
-) -> np.ndarray:
-    
-    mean = np.array(mean, dtype=image.dtype)
-    std = np.array(std, dtype=image.dtype)
-    
-    normalized_image = (image - mean) / std
-    
-    return normalized_image
-
 class PaliGemmaProcessor:
     
     IMAGE_TOKEN = "<image>"
