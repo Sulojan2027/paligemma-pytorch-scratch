@@ -47,5 +47,19 @@ def process_images(
     size: Dict[str, int]= None,
     resample: Image.Resampling = None,
     rescale_factor: float = None,
+    mean: Union[float, Iterable[float]] = None,
+    std: Union[float, Iterable[float]] = None,
+) -> List[np.ndarray]:
     
-)
+    height, width = size[0], size[1]
+    
+    # Resizing
+    images = [resize_image(img, size=(height, width), resampling=resample) for img in images]
+    # Rescaling
+    images = [rescale_image(img, scale=rescale_factor) for img in images]
+    # Normalizing
+    images = [normalize_image(img, mean=mean, std=std) for img in images]
+    
+    images = [img.transpose(2, 0, 1) for img in images]
+    
+    return images
