@@ -1,10 +1,20 @@
-from typing import Dict, Optional, Union, Tuple, Iterable
+from typing import List
 import numpy as np
 from PIL import Image
 import torch
 
+from image_process import process_images
+
 IMAGENET_STANDARD_MEAN = [0.5, 0.5, 0.5]
 IMAGENET_STANDARD_STD = [0.5, 0.5, 0.5]
+
+def add_image_tokens_to_prompt(
+    prefix_prompt,
+    bos_token,
+    image_token,
+    img_seq_len
+):
+    return f"{image_token * img_seq_len}{bos_token}{prefix_prompt}\n"
 
 class PaliGemmaProcessor:
     
@@ -42,20 +52,39 @@ class PaliGemmaProcessor:
         
         assert len(images) == 1 and len(text) == 1, f"Recieved {len(images)} images for {len(text)} text prompts"
         
-        processed_images = process_images(
+        pixel_values = process_images(
             images,
             size=(self.image_size, self.image_size),
             resample = Image.Resampling.BICUBIC,
-            rescale = 1 / 255.0,
-            image_mean = IMAGENET_STANDARD_MEAN,
-            image_std = IMAGENET_STANDARD_STD
+            rescale_factor = 1 / 255.0,
+            mean = IMAGENET_STANDARD_MEAN,
+            std = IMAGENET_STANDARD_STD
         )
         
         # [B, C, H, W]
-        image_batch = np.stack(processed_images, axis=0)
-        image_tensors = torch.tensor(self.image_batch)
+        pixel_values = np.stack(pixel_values, axis=0)
+        pixel_values = torch.tensor(pixel_values)
         
+        input_strings = [
+            add_image_tokens_to_prompt(
+                prefix_prompt=prompt,
+                bos_token=self.tokenizer.bos_token,
+                image_token=self.IMAGE_TOKEN,
+                img_seq_len=self.image_seq_length
+            )
+            for prompt in text
+        ]
         
+        inputs = self.tokenizer(
+            input_strings,
+            return_tensors="pt",
+            padding=padding,
+            truncation=truncation
+        )
+        
+        return_data = {"pixel_values": pixel_values, **inputs}
+        
+        return return_data
         
         
         
